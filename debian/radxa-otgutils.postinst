@@ -6,31 +6,28 @@ action="$1"
 
 if [ "$action" = configure ]
 then
-    # Only proceed with systemd operations if systemd is available
-    if command -v systemctl >/dev/null 2>&1; then
-        deb-systemd-invoke daemon-reload 2>/dev/null || true
+    deb-systemd-invoke daemon-reload 2>/dev/null || true
 
-        # radxa-usbnet@ renamed to radxa-ecm@ in 0.3.2
-        # Can't use `deb-systemd-helper enable "radxa-ecm@$udc.service"` in preinst due to
+    # radxa-usbnet@ renamed to radxa-ecm@ in 0.3.2
+    # Can't use `deb-systemd-helper enable "radxa-ecm@$udc.service"` in preinst due to
+    # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=801822
+    for i in /etc/systemd/system/multi-user.target.wants/radxa-usbnet@*.usb.service; do
+        if [ ! -e "$i" ] && [ ! -L "$i" ] ; then
+            continue
+        fi
+        # Need to manually clean up old link since ecm is now an alias
+        rm "$i"
+        i="$(basename "$i")"
+        ecm=$(echo "$i" | sed "s/usbnet/ecm/")
+        echo "$i is no longer supported. Will be reenabled as $ecm."
+        # Can't use `deb-systemd-helper enable "$i"` due to
         # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=801822
-        for i in /etc/systemd/system/multi-user.target.wants/radxa-usbnet@*.usb.service; do
-            if [ ! -e "$i" ] && [ ! -L "$i" ] ; then
-                continue
-            fi
-            # Need to manually clean up old link since ecm is now an alias
-            rm "$i"
-            i="$(basename "$i")"
-            ecm=$(echo "$i" | sed "s/usbnet/ecm/")
-            echo "$i is no longer supported. Will be reenabled as $ecm."
-            # Can't use `deb-systemd-helper enable "$i"` due to
-            # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=801822
-            if [ -d /run/systemd/system ]; then
-                systemctl enable "$ecm" || true
-            fi
-        done
+        if [ -d /run/systemd/system ]; then
+            deb-systemd-invoke enable "$ecm" 2>/dev/null || true
+        fi
+    done
 
-        deb-systemd-invoke daemon-reload 2>/dev/null || true
-    fi
+    deb-systemd-invoke daemon-reload 2>/dev/null || true
 fi
 
 #DEBHELPER#
